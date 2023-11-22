@@ -32,7 +32,7 @@ do
   cp "$f" "$newfile"
 done
 awk -v OFS='\t' '{ $2 = substr($2, 2); print }' ./input/bh_genotype_100markers_2chr.fam > tmp && mv tmp ./input/bh_genotype_100markers_2chr.fam
-singularity exec -B /lustre -B /software $saige_eqtl step1_fitNULLGLMM_qtl.R \
+singularity exec -B /lustre -B /software $saige_eqtl step1_fitNULLGLMM_qtl.R &> step1.log  \
         --useSparseGRMtoFitNULL=FALSE  \
         --useGRMtoFitNULL=FALSE \
         --phenoFile=./input/seed_1_nfam_5_nindep_0_ncell_100_lambda_50_withCov_Poisson.txt	\
@@ -60,7 +60,7 @@ echo -e "2\t300001\t610001" > ${regionFile}
 step1prefix=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_1
 step2prefix=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_1_cis
 
-singularity exec -B /lustre -B /software $saige_eqtl Rscript step2_tests_qtl.R       \
+singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R &> step2.log \
         --bedFile=./input/bh_genotype_100markers_2chr.bed      \
         --bimFile=./input/bh_genotype_100markers_2chr.bim      \
         --famFile=./input/bh_genotype_100markers_2chr.fam      \
@@ -75,21 +75,19 @@ singularity exec -B /lustre -B /software $saige_eqtl Rscript step2_tests_qtl.R  
         --rangestoIncludeFile=${regionFile}     \
         --markers_per_chunk=10000
 
-# This still doesn't work. Looks like only the first function has been fixed
-
 # ~~~~~~~~~~~~~~~~~~~~ Step 2 - Genome wide ~~~~~~~~~~~~~~~~~~~~~~~
 # This requires the use of the downloaded results from: https://weizhou0.github.io/SAIGE-QTL-doc/docs/genomewide-eQTL.html into 'SAIGEQTL_step1_example_output'
 # Create the mapping file
 rm ./input/step1_output_formultigenes.txt
 for i in {1..100}
   do
-     step1prefix=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_${i}
+     step1prefix=./SAIGEQTL_step1_example_output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_${i}
      echo -e "gene_${i} ${step1prefix}.rda ${step1prefix}.varianceRatio.txt" >> ./input/step1_output_formultigenes.txt
   done
 
 #run step 2 for all 100 genes 
 step2prefix=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_chr2
-singularity exec -B /lustre -B /software $saige_eqtl Rscript step2_tests_qtl.R       \
+singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R       \
     --bedFile=./input/bh_genotype_100markers_2chr.bed      \
     --bimFile=./input/bh_genotype_100markers_2chr.bim      \
     --famFile=./input/bh_genotype_100markers_2chr.fam      \
@@ -101,5 +99,11 @@ singularity exec -B /lustre -B /software $saige_eqtl Rscript step2_tests_qtl.R  
     --SPAcutoff=2 \
     --markers_per_chunk=10000
 
-# This also has not been fixed
-      
+# ~~~~~~~~~~~~~~~~~~~~ Step 3 ~~~~~~~~~~~~~~~~~~~~~~~
+# Obtain gene-level p-values using the ACAT test
+# https://weizhou0.github.io/SAIGE-QTL-doc/docs/gene_step3.html
+# Run this on a single association (this just seems to be subsetting for the smallest p-value per gene)
+singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step3_gene_pvalue_qtl.R \
+        --assocFile=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_1_cis        \
+        --geneName=gene_1       \
+        --genePval_outputFile=./output/nindep_100_ncell_100_lambda_2_tauIntraSample_0.5_gene_1_cis_genePval
