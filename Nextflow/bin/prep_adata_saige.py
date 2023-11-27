@@ -15,148 +15,27 @@ __version__ = '0.0.1'
 # Load packages
 import sys
 import os
-sys.path.append('/software/team152/bh18/pip')
-sys.path.append('/usr/local/')
-print("System path")
-print(sys.path)
 import numpy as np
-print("Numpy file")
-print(np.__file__)
 import pandas as pd
 import scanpy as sc
 import anndata as ad
 import matplotlib as mp
-from matplotlib import pyplot as plt
-from matplotlib.pyplot import rc_context
 import kneed as kd
-import scvi
-import csv
-import datetime
-import seaborn as sns
-import matplotlib.pyplot as plt
 import math
 import scipy.stats as st
-import re
 from scipy import stats
 from sklearn.mixture import GaussianMixture
 from scipy.stats import norm
-from sympy import symbols, Eq, solve
 from sklearn.preprocessing import StandardScaler
 from scipy.optimize import fsolve
 from scipy.optimize import brentq
-import torch
-from scib_metrics.benchmark import Benchmarker
 import argparse
 import kneed as kd
 from numpy import asarray
 from numpy import savetxt
 print("Loaded libraries")
 
-# Inherit options
-parser = argparse.ArgumentParser(
-        description="""
-            Prepping files for the SAIGEQTL analysis
-            """
-    )
-
-parser.add_argument(
-        '-p', '--phenotype__file',
-        action='store',
-        dest='phenotype__file',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-a', '--aggregate_on',
-        action='store',
-        dest='aggregate_on',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-g', '--genotype_pc__file',
-        action='store',
-        dest='genotype_pc__file',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-id', '--genotype_id',
-        action='store',
-        dest='genotype_id',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-s', '--sample_id',
-        action='store',
-        dest='sample_id',
-        required=True,
-        help=''
-    )
-
-
-parser.add_argument(
-        '-o', '--general_file_dir',
-        action='store',
-        dest='general_file_dir',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-p', '--nperc',
-        action='store',
-        dest='nperc',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-col', '--condition_col',
-        action='store',
-        dest='condition_col',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-cond', '--condition',
-        action='store',
-        dest='condition',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-covs', '--covariates',
-        action='store',
-        dest='covariates',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-xpca', '--expression_pca',
-        action='store',
-        dest='expression_pca',
-        required=True,
-        help=''
-    )
-
-parser.add_argument(
-        '-sc', '--scale_covariates',
-        action='store',
-        dest='scale_covariates',
-        required=True,
-        help=''
-    )
-
-
+# Define covariate process function
 def preprocess_covariates(df, scale_covariates):
     processed_df = df.copy()
     for column in df.columns:
@@ -176,39 +55,139 @@ def preprocess_covariates(df, scale_covariates):
             processed_df = pd.concat([processed_df, dummy_columns], axis=1)
     return processed_df
 
-# Testing in this instance, so define these
-phenotype__file = "/lustre/scratch126/humgen/projects/sc-eqtl-ibd/analysis/freeze_003/ti-cd_healthy-fr003_004/anderson_ti_freeze003_004-eqtl_processed.h5ad"
-aggregate_on = "category__machine"
-general_file_dir = "/lustre/scratch126/humgen/projects/sc-eqtl-ibd/analysis/bradley_analysis/results/TI/SAIGE_runfiles"
-genotype_pc__file = f"{general_file_dir}/genotypes/plink_genotypes.eigenvec"
-genotype_id = "Corrected_genotyping_ID"
-sample_id = "sanger_sample_id"
-nperc=1
-n_geno_pcs="5"
-condition_col=""
-condition=""
-covariates="age_imputed,sex,Keras:predicted_celltype_probability"
-expression_pca=True
-scale_covariates=False
+# Define the main script
+def main():
+    # Inherit options
+    parser = argparse.ArgumentParser(
+            description="""
+                Prepping files for the SAIGEQTL analysis
+                """
+        )
 
-# Load in the adata object
-adata = ad.read_h5ad(phenotype__file)
+    parser.add_argument(
+            '-p', '--phenotype__file',
+            action='store',
+            dest='phenotype__file',
+            required=True,
+            help=''
+        )
 
-# Load the genotype PCs
-geno_pcs = pd.read_csv(genotype_pc__file, sep = "\t")
-geno_pcs = geno_pcs.set_index("IID")
-geno_pcs = geno_pcs.iloc[:,1:]
-geno_pcs.reset_index(inplace=True)
-geno_pcs.rename(columns={"IID": genotype_id}, inplace=True)
+    parser.add_argument(
+            '-a', '--aggregate_on',
+            action='store',
+            dest='aggregate_on',
+            required=True,
+            help=''
+        )
 
-# Subset for the cells we want here (based on the condition column and value specified)
-if condition_col != "":
-    print("Subsetting for the condition")
-    adata = adata[adata.obs[condition_col] == condition]
+    parser.add_argument(
+            '-g', '--genotype_pc__file',
+            action='store',
+            dest='genotype_pc__file',
+            required=True,
+            help=''
+        )
 
-# Replace the ages of those missing [SPECIFIC TO OUR DATA/SAMPLES]
-adata.obs.loc[adata.obs['sanger_sample_id'].isin(['OTARscRNA9294497', 'OTARscRNA9294498']), 'age_imputed'] = 56.5
-covs_use=covariates.split(',')
+    parser.add_argument(
+            '-id', '--genotype_id',
+            action='store',
+            dest='genotype_id',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-s', '--sample_id',
+            action='store',
+            dest='sample_id',
+            required=True,
+            help=''
+        )
+
+
+    parser.add_argument(
+            '-o', '--general_file_dir',
+            action='store',
+            dest='general_file_dir',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-p', '--nperc',
+            action='store',
+            dest='nperc',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-col', '--condition_col',
+            action='store',
+            dest='condition_col',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-cond', '--condition',
+            action='store',
+            dest='condition',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-covs', '--covariates',
+            action='store',
+            dest='covariates',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-xpca', '--expression_pca',
+            action='store',
+            dest='expression_pca',
+            required=True,
+            help=''
+        )
+
+    parser.add_argument(
+            '-sc', '--scale_covariates',
+            action='store',
+            dest='scale_covariates',
+            required=True,
+            help=''
+        )
+    
+        parser.add_argument(
+            '-l', '--level',
+            action='store',
+            dest='level',
+            required=True,
+            help=''
+        )
+
+    # Load in the adata object
+    adata = ad.read_h5ad(phenotype__file)
+
+    # Load the genotype PCs
+    geno_pcs = pd.read_csv(genotype_pc__file, sep = "\t")
+    geno_pcs = geno_pcs.set_index("IID")
+    geno_pcs = geno_pcs.iloc[:,1:]
+    geno_pcs.reset_index(inplace=True)
+    geno_pcs.rename(columns={"IID": genotype_id}, inplace=True)
+
+    # Subset for the cells we want here (based on the condition column and value specified)
+    if condition_col != "":
+        print("Subsetting for the condition")
+        adata = adata[adata.obs[condition_col] == condition]
+
+    # Replace the ages of those missing [SPECIFIC TO OUR DATA/SAMPLES]
+    adata.obs.loc[adata.obs['sanger_sample_id'].isin(['OTARscRNA9294497', 'OTARscRNA9294498']), 'age_imputed'] = 56.5
+    covs_use=covariates.split(',')
+
 
 
 # For each category of the aggregation column, we want to:
