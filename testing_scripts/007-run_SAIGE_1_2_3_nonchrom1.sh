@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #### Bradley 2023
 #### SAIGE on the rest of the chromosomes - using the optimum PC from step 005 (chromosome 1 only)
+# bsub -o logs/saige_array_test-%J-%I-output.log -e logs/saige_array_test-%J-%I-error.log -q normal -G team152 -n 1 -M 9000 -a "memlimit=True" -R "select[mem>9000] rusage[mem=9000] span[hosts=1]" -J "saige_array_test[1-6958]%250" < testing_scripts/007-run_SAIGE_1_2_3_nonchrom1.sh 
 
 
 # Load modules and docker
@@ -8,14 +9,14 @@ module load ISG/singularity/3.9.0
 saige_eqtl=/software/team152/bh18/singularity/singularity/saige.simg
 
 # Define options for this test (will ultimately be inherited) and general options
-category="Secretory"
+category="Tuft_cell"
 phenotype__file="/lustre/scratch126/humgen/projects/sc-eqtl-ibd/analysis/freeze_003/ti-cd_healthy-fr003_004/anderson_ti_freeze003_004-eqtl_processed.h5ad"
-aggregate_on="category__machine"
+aggregate_on="label__machine"
 general_file_dir="/lustre/scratch126/humgen/projects/sc-eqtl-ibd/analysis/bradley_analysis/results/TI/SAIGE_runfiles"
 genotype_pc__file=${general_file_dir}/genotypes/plink_genotypes.eigenvec
 genotype_id="Corrected_genotyping_ID"
 sample_id="sanger_sample_id"
-nperc=20
+nperc=1
 condition_col=""
 condition=""
 covariates="age_imputed,sex,Keras:predicted_celltype_probability"
@@ -27,9 +28,9 @@ cis_window=1000000
 
 # Set up dir
 if [ -n "$condition_col" ]; then
-catdir=${general_file_dir}/${category}/${condition_col}/${condition}
+    catdir=${general_file_dir}/${aggregate_on}/${category}/${condition_col}/${condition}
 else
-catdir=${general_file_dir}/${category}
+    catdir=${general_file_dir}/${aggregate_on}/${category}
 fi
 
 # If submitting as an array job for non-chromosome 1 genes:
@@ -51,11 +52,11 @@ done
 
 # And expression PCs to the cell-level covariates
 if [[ "$expression_pca" == "True" ]]; then
-# Define file
-knee_file=${catdir}/knee.txt
-knee=$(<"$knee_file")
-# Generate the 'PC' string up to the numeric value
-covariates_cell="${covariates_cell},$(printf "xPC%d," $(seq "$knee") | sed 's/,$//')"
+    # Define file
+    knee_file=${catdir}/knee.txt
+    knee=$(<"$knee_file")
+    # Generate the 'PC' string up to the numeric value
+    covariates_cell="${covariates_cell},$(printf "xPC%d," $(seq "$knee") | sed 's/,$//')"
 fi
 
 # Fix covariate issue (replacing ':' with '_') in both the covariates and covatiates_cell
@@ -68,7 +69,7 @@ covariates_sample=$(echo "$covariates" | tr ',' '\n' | sort | comm -23 - <(echo 
 
 
 echo "Estimating the variance"
-singularity exec -B /lustre -B /software $saige_eqtl step1_fitNULLGLMM_qtl.R &> step1.log \
+singularity exec -B /lustre -B /software $saige_eqtl step1_fitNULLGLMM_qtl.R \
     --useSparseGRMtoFitNULL=FALSE  \
     --useGRMtoFitNULL=FALSE \
     --phenoFile=${catdir}/saige_filt_expr_input.txt	\
@@ -102,7 +103,7 @@ if [ "$cis_only" = true ]; then
 
     # Now perform the cis-only analysisq2
     echo "Performing the cis-only analysis"
-    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R &> step2.log \
+    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R \
         --bedFile=${general_file_dir}/genotypes/plink_genotypes_chr${gene_chr}.bed      \
         --bimFile=${general_file_dir}/genotypes/plink_genotypes_chr${gene_chr}.bim      \
         --famFile=${general_file_dir}/genotypes/plink_genotypes_chr${gene_chr}.fam      \
@@ -118,7 +119,7 @@ if [ "$cis_only" = true ]; then
         --markers_per_chunk=10000
 
     # Also perform the ACAT test for this gene
-    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step3_gene_pvalue_qtl.R &> step3.log \
+    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step3_gene_pvalue_qtl.R \
         --assocFile=${step2prefix}.txt      \
         --geneName=$gene       \
         --genePval_outputFile=${step2prefix}_ACAT.txt
@@ -129,9 +130,9 @@ if [ "$cis_only" = true ]; then
     # Remove the intermediate files (step 1 only)
     rm ${step1prefix}*
     echo "Finished analysis, removed intermediate files"
-    else
+else
     step2prefix=${catdir}/${gene}__npc${n_geno_pcs}_gw.txt
-    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R &> ${catdir}/${gene}_npc${n_geno_pcs}_log.txt \
+    singularity exec -B /lustre -B /software $saige_eqtl Rscript /usr/local/bin/step2_tests_qtl.R \
         --bedFile=${general_file_dir}/genotypes/plink_genotypes.bed      \
         --bimFile=${general_file_dir}/genotypes/plink_genotypes.bim      \
         --famFile=${general_file_dir}/genotypes/plink_genotypes.fam      \

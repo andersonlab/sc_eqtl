@@ -6,7 +6,7 @@ general_file_dir="/lustre/scratch126/humgen/projects/sc-eqtl-ibd/analysis/bradle
 genotype_pc__file=${general_file_dir}/genotypes/plink_genotypes.eigenvec
 genotype_id="Corrected_genotyping_ID"
 sample_id="sanger_sample_id"
-nperc=20
+nperc=1
 condition_col="NULL" #Specify 'NULL' if want to include all cells
 condition="NULL"
 covariates="age_imputed,sex,Keras:predicted_celltype_probability"
@@ -19,7 +19,7 @@ scale_covariates=false
 cis_window=1000000
 
 # Run script to subset anndata object based on this aggregation column, identify genes to test, make the neccessary input files for SAIGE
-# scvi_gpu3 environment
+# mamba activate scvi_gpu3
 python testing_scripts/bin/prep_adata_saige.py \
     --phenotype__file $phenotype__file \
     --aggregate_on $aggregate_on \
